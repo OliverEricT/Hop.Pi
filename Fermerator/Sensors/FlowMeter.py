@@ -1,15 +1,15 @@
 import time
 import random
 import logging
-import RPi.GPIO as GPIO
-### Begin. These probably need to be pulled.
-import beer_db
-import twitter_notify
-import slack_notify
-import requests
-import ConfigParser
+import RPI.GPIO as GPIO
 import logging
-import zope.event
+import requests
+### Begin. These probably need to be pulled.
+# import beer_db
+# import twitter_notify
+# import slack_notify
+# import ConfigParser
+# import zope.event
 ### End
 
 """
@@ -88,7 +88,7 @@ class FlowMeter():
 		return self._flow
 
 	@Flow.setter
-	def Flow(self,val = 0):
+	def Flow(self,val = 0.0):
 		self._flow = val
 
 	
@@ -199,7 +199,7 @@ class FlowMeter():
 		"""Sets a timestamp of the last pour event.
 		:param currentTime: timestamp of a long
 		"""
-		self.clicks += 1
+		self.Clicks += 1
 		# get the time delta
 		clickDelta = max((currentTime - self.LastClick), 1)
 		# calculate the instantaneous speed

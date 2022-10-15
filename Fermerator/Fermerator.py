@@ -1,25 +1,21 @@
 import os
-import pyfiglet
 import time
 import math
 import logging
-# import RPi.GPIO as GPIO
-from flowmeter import *
-import BeerTemp
-import beer_db
-import twitter_notify
-import slack_notify
 import requests
-import ConfigParser
-import logging
-import bar_mqtt
-import time
-import zope.event
-from prettytable import PrettyTable
-import os 
+import Sensors.TempSensor
+import Sensors.FlowMeter
 import sys
 import socket
 from contextlib import closing
+
+import pyfiglet
+# import RPi.GPIO as GPIO
+import beer_db
+import ConfigParser
+import bar_mqtt
+import zope.event
+from prettytable import PrettyTable
 import influxdb_client
 
 class Fermerator:
@@ -63,37 +59,20 @@ class Fermerator:
 		self.Config = ConfigParser.ConfigParser()
 		self.Config.read(self.CONFIG_FILEPATH)
 
+		# TODO Refactor this section
 		# Set the logger
-		self.Logger = logging.getLogger()
-		handler = logging.StreamHandler()
-		formatter = logging.Formatter(
-			'%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-		handler.setFormatter(formatter)
-		self.Logger.addHandler(handler)
-		self.Logger.setLevel(logging.INFO)
-		# Check to see if we need to override the logging level
-		try:
-			level = self.config.get("Boozer", "logging_level")
-			level = level.upper()
-			if level == "INFO":
-				self.Logger.setLevel(logging.INFO)
-			if level == "WARN":
-				self.Logger.setLevel(logging.WARN)
-			if level == "DEBUG":
-				self.Logger.setLevel(logging.DEBUG)
-			if level == "ERROR":
-				self.Logger.setLevel(logging.ERROR)
-		except Exception, e:
-			self.Logger.debug("not overriding the logging level. error: " + str(e))
-
+		self.InitLogger()
+		
+		# TODO refactor this to use a db connection from the config
 		self.db = beer_db.BeerDB(self.DB_FILEPATH)  # TODO: replace this with configuration value
 
 		current_path = os.path.dirname(os.path.realpath(__file__))
+		
 		if not os.path.isfile(self.DB_FILEPATH):
-			logger.fatal("[fatal] cannot load db from " % self.DB_FILEPATH)
+			self.Logger.fatal("[fatal] cannot load db from " % self.DB_FILEPATH)
 			sys.exit(1)
 		if not os.path.isfile(self.CONFIG_FILEPATH):
-			logger.fatal("[fatal] cannot load config from " % self.CONFIG_FILEPATH)
+			self.Logger.fatal("[fatal] cannot load config from " % self.CONFIG_FILEPATH)
 			sys.exit(1)
 
 		# setup temperature client
@@ -212,6 +191,36 @@ class Fermerator:
 			#if MQTT_ENABLED: update_mqtt(tap.get_tap_id()) # do a prelim mqtt update in case it's been awhile
 
 		zope.event.subscribers.append(self.register_pour_event) # Attach the event
+
+	#########################
+	#	Init helpers		#
+	#########################
+
+	def InitLogger(self):
+		self.Logger = logging.getLogger()
+		handler = logging.StreamHandler()
+		formatter = logging.Formatter(
+			'%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+		handler.setFormatter(formatter)
+		self.Logger.addHandler(handler)
+		self.Logger.setLevel(logging.INFO)
+		# Check to see if we need to override the logging level
+		try:
+			level = self.Config.get("Boozer", "logging_level")
+			level = level.upper()
+			if level == "INFO":
+				self.Logger.setLevel(logging.INFO)
+			if level == "WARN":
+				self.Logger.setLevel(logging.WARN)
+			if level == "DEBUG":
+				self.Logger.setLevel(logging.DEBUG)
+			if level == "ERROR":
+				self.Logger.setLevel(logging.ERROR)
+		except Exception, e:
+			self.Logger.debug("not overriding the logging level. error: " + str(e))
+
+
+
 
 	def update_mqtt(self, tap_id="-1", beverage_name="default_beverage"):
 		"""

@@ -6,94 +6,116 @@ import sys
 import os
 import glob
 
+# TODO: Move this to somewhere logical
+from enum import Enum
+class SensorType(Enum):
+	"""
+	Type of temperature sensor
+	"""
+	NONE = 0
+	DS18B20 = 1
+	HTTP = 2
+
 class TempSensor():
-	SENSOR_DS18B20 = "ds18b20"
-	SENSOR_HTTP = "http"
+	"""
+	Class to read the temperature from either a probe or an api endpoint
+	"""
+
 	DEGREES = "°"
+	BASE_DIR = "/sys/bus/w1/devices/"
 
 	@property
-	def SensorProtocol(self):
+	def SensorProtocol(self) -> SensorType:
+		"""
+		Denotes the sensor type that the instance is using
+		"""
 		return self._sensorProtocol
 
 	@SensorProtocol.setter
-	def SensorProtocol(self,val):
+	def SensorProtocol(self, val: SensorType):
 		self._sensorProtocol = val
 
 	@property
-	def SensorId(self):
+	def SensorId(self) -> str:
 		return self._sensorId
 
 	@SensorId.setter
-	def SensorId(self,val):
+	def SensorId(self, val: str):
 		self._sensorId = val
 
 	@property
-	def SensorUrl(self):
+	def SensorUrl(self) -> str:
 		return self._sensorUrl
 
 	@SensorUrl.setter
-	def SensorUrl(self,val):
+	def SensorUrl(self, val: str):
 		self._sensorUrl = val
 
 	@property
-	def IsMetric(self):
+	def IsMetric(self) -> bool:
 		return self._IsMetric
 
 	@IsMetric.setter
-	def IsMetric(self,val):
+	def IsMetric(self, val: bool):
 		self._IsMetric = val
 
 	@property
-	def Logger(self):
+	def Logger(self) -> logging.Logger:
 		return self._logger
 
 	@Logger.setter
-	def Logger(self,val):
+	def Logger(self, val: logging.Logger):
 		self._logger = val
 
 	@property
-	def Temperature(self):
-		if self.SensorProtocol == self.SENSOR_HTTP:
+	def Temperature(self) -> float:
+		if self.SensorProtocol == SensorType.HTTP:
 			return self._GetTemperatureByHttp()
 		else:
 			return self.ReadDS18B20Sensor(self.SensorId)
 
 	@property
-	def Fahrenheit(self):
+	def Fahrenheit(self) -> float:
 		if self.IsMetric:
 			return self.ToFahrenheit(self.Temperature)
 		else:
 			return self.Temperature
 
 	@property
-	def Celsius(self):
+	def Celsius(self) -> float:
 		if self.IsMetric:
 			return self.Temperature
 		else:
 			return self.ToCelsius(self.Temperature)
 
-	def __init__(self, sensor_protocol=None, sensor_id=None, sensor_url=None, isMetric=False):
+	def __init__(self,
+		sensor_protocol: SensorType = SensorType.NONE,
+		sensor_id: str = "",
+		sensor_url: str = "",
+		isMetric: bool = True
+	):
 		"""
+		Constructor
 		"""
 		self.Logger = logging.getLogger(__name__)
-		self.Logger.info("beertemps initializing")
+		self.Logger.info("TempSensor initializing")
 
 		self.SensorProtocol = sensor_protocol
-		if self.SensorProtocol == self.SENSOR_DS18B20:
+		if self.SensorProtocol == SensorType.DS18B20:
 			os.system('modprobe w1-gpio')
 			os.system('modprobe w1-therm')
-			if sensor_id is None: 
+			if sensor_id == "": 
 				self.SensorId = self.GetDS18B20SensorIds()[0] # if user does not specify, just pick the first one.
 			else:
 				self.SensorId = sensor_id
-		elif self.SensorProtocol != self.SENSOR_HTTP:
+		elif self.SensorProtocol != SensorType.HTTP:
 			self.Logger.error("Configuration error. temperature sensor_protocol must map to DS18B20 or HTTP")
 			sys.exit(1)
 
 		self.SensorUrl = sensor_url
 		self.IsMetric = isMetric
 
-	def _GetTemperatureByHttp(self):
+	def _GetTemperatureByHttp(self) -> float:
 		try:
 			r = requests.get(self.SensorUrl)
 			if r.status_code == 200:
@@ -104,33 +126,35 @@ class TempSensor():
 			else:
 				self.Logger.error("error: temperature sensor received http_code %i" % r.status_code)
 		except:
-			self.Logger.error("Temperature. Unable to get temperature from sensor_url: %s" % self.sensor_url)
+			self.Logger.error("Temperature. Unable to get temperature from sensor_url: %s" % self.SensorUrl)
 
-	def ToFahrenheit(self,temperature):
+		return 0.0
+
+	def ToFahrenheit(self, temperature: float) -> float:
 		return (temperature * 9.0 / 5.0 + 32.0)
 
-	def ToCelsius(self,temp):
+	def ToCelsius(self, temp: float) -> float:
 		return ((temp - 32) / 1.80000)
 
-	def ReadDS18B20Sensor(self,sensor_id):
+	def ReadDS18B20Sensor(self, sensor_id: str) -> float:
 		lines = self.ReadTempRaw(sensor_id)
 		return self.ProcessRawDS18B20Data(lines, sensor_id)
 
-	def GetDS18B20SensorIds(self):
-		base_dir = '/sys/bus/w1/devices/'
-		NUM_SENSORS = len(glob.glob(base_dir + '28*'))
+	def GetDS18B20SensorIds(self) -> list[str]:
+		numSensors = len(glob.glob(self.BASE_DIR + '28*'))
 		sensor_ids=[]
-		for x in range(0,NUM_SENSORS):
-			device_folder = glob.glob(base_dir + '28*')[x]
-			id = device_folder.replace("/sys/bus/w1/devices/",'')
+		for x in range(0,numSensors):
+			device_folder = glob.glob(self.BASE_DIR + '28*')[x]
+			id = device_folder.replace(self.BASE_DIR,'')
 			sensor_ids.append(id)
 			self.Logger.info("discovered sensor id %s " % str(id))
 		return sensor_ids
 
-	def ProcessRawDS18B20Data(self, lines, sensor_id):
+	def ProcessRawDS18B20Data(self, lines: list[str], sensor_id: str) -> float:
 		while lines[0].strip()[-3:] != 'YES': # TODO: wtf is this shit
 			time.sleep(0.2)
-			lines = self.read_temp_raw(sensor_id)
+			lines = self.ReadTempRaw(sensor_id)
+
 		equals_pos = lines[1].find('t=')
 		if equals_pos != -1:
 			temp_string = lines[1][equals_pos+2:]
@@ -140,9 +164,10 @@ class TempSensor():
 			else:
 				return self.ToFahrenheit(temp_c)
 
-	def ReadTempRaw(self, sensor_id):
-		base_dir = '/sys/bus/w1/devices/'
-		device_folder = glob.glob(base_dir + sensor_id)[0]
+		return 0.0
+
+	def ReadTempRaw(self, sensor_id: str) -> list[str]:
+		device_folder = glob.glob(self.BASE_DIR + sensor_id)[0]
 		device_file = device_folder + '/w1_slave'
 		f = open(device_file, 'r')
 		lines = f.readlines()
@@ -150,8 +175,8 @@ class TempSensor():
 		return lines
 
 def Main():
-	t = TempSensor(sensor_protocol="ds18b20")
-	print("Read in: %s " % str(t.Temperature()))
+	t = TempSensor(sensor_protocol=SensorType.DS18B20)
+	print("Read in: %s " % str(t.Temperature))
 
 if __name__ == "__main__":
 	Main()
